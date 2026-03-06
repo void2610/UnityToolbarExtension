@@ -13,8 +13,18 @@ namespace YujiAp.UnityToolbarExtension.Editor
     {
         private const string ToolbarZoneLeftAlignName = "ToolbarZoneLeftAlign";
         private const string ToolbarZoneRightAlignName = "ToolbarZoneRightAlign";
+        private const string ToolbarOverlayTopName = "overlay-toolbar__top";
+        private const string ToolbarOverlayBeforeSpacerClassName = "unity-overlay-container__before-spacer-container";
+        private const string ToolbarOverlayMiddleClassName = "unity-overlay-container__middle-container";
+        private const string ToolbarOverlayAfterSpacerClassName = "unity-overlay-container__after-spacer-container";
+        private const string OverlayElementClassName = "unity-overlay";
+        private const string OverlayHorizontalLayoutClassName = "overlay-layout--toolbar-horizontal";
+        private const string OverlayExpandedClassName = "unity-overlay--expanded";
+        private const string PlayModeOverlayName = "PlayMode";
         private const string ToolbarExtensionLeftContainerName = "ToolbarExtensionLeftContainer";
         private const string ToolbarExtensionRightContainerName = "ToolbarExtensionRightContainer";
+        private const string ToolbarExtensionMiddleLeftContainerName = "ToolbarExtensionMiddleLeftContainer";
+        private const string ToolbarExtensionMiddleRightContainerName = "ToolbarExtensionMiddleRightContainer";
         private const string ToolbarExtensionLeftAlignName = "LeftAlign";
         private const string ToolbarExtensionRightAlignName = "RightAlign";
 
@@ -37,9 +47,7 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 return;
             }
 
-            var toolbarZoneLeftAlign = toolbar.Q(ToolbarZoneLeftAlignName);
-            var toolbarZoneRightAlign = toolbar.Q(ToolbarZoneRightAlignName);
-            if (toolbarZoneLeftAlign == null || toolbarZoneRightAlign == null)
+            if (!TryGetToolbarZones(toolbar, out var toolbarZoneLeftAlign, out var toolbarZoneRightAlign, out var useCompactContainer))
             {
                 return;
             }
@@ -50,6 +58,17 @@ namespace YujiAp.UnityToolbarExtension.Editor
             var rightContainer = toolbarZoneRightAlign.Q(ToolbarExtensionRightContainerName);
             if (leftContainer != null && rightContainer != null)
             {
+                if (useCompactContainer)
+                {
+                    ApplyCompactLayout(leftContainer);
+                    ApplyCompactLayout(rightContainer);
+                    EnsureCompactOuterContainerOrder(toolbarZoneRightAlign, rightContainer, toolbarZoneRightAlign.childCount - 1);
+                    EnsureCompactCenterContainers(toolbar, out var centerLeftContainer, out var centerRightContainer);
+                    DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), centerLeftContainer,
+                        centerRightContainer, rightContainer.Q(ToolbarExtensionRightAlignName));
+                    return;
+                }
+
                 // 描画済みなので終了
                 return;
             }
@@ -58,6 +77,10 @@ namespace YujiAp.UnityToolbarExtension.Editor
             {
                 leftContainer = CreateContainerElement();
                 leftContainer.name = ToolbarExtensionLeftContainerName;
+                if (useCompactContainer)
+                {
+                    ApplyCompactLayout(leftContainer);
+                }
                 toolbarZoneLeftAlign.Insert(toolbarZoneLeftAlign.childCount, leftContainer);
             }
 
@@ -65,7 +88,19 @@ namespace YujiAp.UnityToolbarExtension.Editor
             {
                 rightContainer = CreateContainerElement();
                 rightContainer.name = ToolbarExtensionRightContainerName;
+                if (useCompactContainer)
+                {
+                    ApplyCompactLayout(rightContainer);
+                }
                 toolbarZoneRightAlign.Insert(toolbarZoneRightAlign.childCount, rightContainer);
+            }
+
+            if (useCompactContainer)
+            {
+                EnsureCompactCenterContainers(toolbar, out var centerLeftContainer, out var centerRightContainer);
+                DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), centerLeftContainer,
+                    centerRightContainer, rightContainer.Q(ToolbarExtensionRightAlignName));
+                return;
             }
 
             DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), leftContainer.Q(ToolbarExtensionRightAlignName),
@@ -80,8 +115,13 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 return null;
             }
 
-            var getField = toolbarType.GetField("get", BindingFlags.Static | BindingFlags.Public);
+            var getField = toolbarType.GetField("get", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             var getValue = getField?.GetValue(null);
+            if (getValue == null)
+            {
+                var instanceProperty = toolbarType.GetProperty("instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                getValue = instanceProperty?.GetValue(null);
+            }
             if (getValue == null)
             {
                 return null;
@@ -104,6 +144,30 @@ namespace YujiAp.UnityToolbarExtension.Editor
             var visualTreeValue = visualTreeProperty?.GetValue(windowBackendValue);
 
             return visualTreeValue as VisualElement;
+        }
+
+        private static bool TryGetToolbarZones(VisualElement toolbar, out VisualElement leftZone, out VisualElement rightZone, out bool useCompactContainer)
+        {
+            leftZone = toolbar.Q(ToolbarZoneLeftAlignName);
+            rightZone = toolbar.Q(ToolbarZoneRightAlignName);
+            if (leftZone != null && rightZone != null)
+            {
+                useCompactContainer = false;
+                return true;
+            }
+
+            var overlayToolbar = toolbar.Q(ToolbarOverlayTopName);
+            if (overlayToolbar == null)
+            {
+                useCompactContainer = false;
+                return false;
+            }
+
+            leftZone = overlayToolbar.Q(className: ToolbarOverlayBeforeSpacerClassName);
+            rightZone = overlayToolbar.Q(className: ToolbarOverlayAfterSpacerClassName);
+            useCompactContainer = true;
+
+            return leftZone != null && rightZone != null;
         }
 
         private static VisualElement CreateContainerElement()
@@ -135,6 +199,89 @@ namespace YujiAp.UnityToolbarExtension.Editor
             root.Add(rightAlign);
 
             return root;
+        }
+
+        private static void ApplyCompactLayout(VisualElement container)
+        {
+            container.AddToClassList(OverlayElementClassName);
+            container.AddToClassList(OverlayHorizontalLayoutClassName);
+            container.AddToClassList(OverlayExpandedClassName);
+            container.style.flexGrow = 0;
+
+            var leftAlign = container.Q(ToolbarExtensionLeftAlignName);
+            if (leftAlign != null)
+            {
+                leftAlign.style.flexGrow = 0;
+            }
+
+            var rightAlign = container.Q(ToolbarExtensionRightAlignName);
+            if (rightAlign != null)
+            {
+                rightAlign.style.flexGrow = 0;
+            }
+
+            if (container.childCount > 1)
+            {
+                var spacer = container[1];
+                spacer.style.display = DisplayStyle.None;
+                spacer.style.flexGrow = 0;
+            }
+        }
+
+        private static void EnsureCompactCenterContainers(VisualElement toolbar, out VisualElement centerLeftContainer, out VisualElement centerRightContainer)
+        {
+            centerLeftContainer = new VisualElement();
+            centerRightContainer = new VisualElement();
+            var overlayToolbar = toolbar.Q(ToolbarOverlayTopName);
+            var middleZone = overlayToolbar?.Q(className: ToolbarOverlayMiddleClassName);
+            var playModeOverlay = middleZone?.Q(PlayModeOverlayName);
+            if (middleZone == null || playModeOverlay == null)
+            {
+                return;
+            }
+
+            centerLeftContainer = middleZone.Q(ToolbarExtensionMiddleLeftContainerName) ?? CreateCompactCenterContainer(ToolbarExtensionMiddleLeftContainerName);
+            centerRightContainer = middleZone.Q(ToolbarExtensionMiddleRightContainerName) ?? CreateCompactCenterContainer(ToolbarExtensionMiddleRightContainerName);
+
+            centerLeftContainer.RemoveFromHierarchy();
+            centerRightContainer.RemoveFromHierarchy();
+
+            var playModeIndex = middleZone.IndexOf(playModeOverlay);
+            middleZone.Insert(Mathf.Clamp(playModeIndex, 0, middleZone.childCount), centerLeftContainer);
+
+            playModeIndex = middleZone.IndexOf(playModeOverlay);
+            middleZone.Insert(Mathf.Clamp(playModeIndex + 1, 0, middleZone.childCount), centerRightContainer);
+        }
+
+        private static VisualElement CreateCompactCenterContainer(string name)
+        {
+            var container = new VisualElement();
+            container.name = name;
+            container.AddToClassList(OverlayElementClassName);
+            container.AddToClassList(OverlayHorizontalLayoutClassName);
+            container.AddToClassList(OverlayExpandedClassName);
+            container.style.flexGrow = 0;
+            container.style.flexDirection = FlexDirection.Row;
+            container.style.alignItems = Align.Center;
+            container.style.justifyContent = Justify.FlexStart;
+            return container;
+        }
+
+        private static void EnsureCompactOuterContainerOrder(VisualElement parent, VisualElement container, int targetIndex)
+        {
+            if (parent == null || container == null)
+            {
+                return;
+            }
+
+            var currentIndex = parent.IndexOf(container);
+            if (currentIndex == targetIndex || currentIndex < 0)
+            {
+                return;
+            }
+
+            container.RemoveFromHierarchy();
+            parent.Insert(Mathf.Clamp(targetIndex, 0, parent.childCount), container);
         }
 
         private static void DrawElements(VisualElement leftSideLeftAlignRoot, VisualElement leftSideRightAlignRoot,
@@ -239,8 +386,13 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 return;
             }
 
-            var leftContainer = toolbar.Q(ToolbarExtensionLeftContainerName);
-            var rightContainer = toolbar.Q(ToolbarExtensionRightContainerName);
+            if (!TryGetToolbarZones(toolbar, out var leftZone, out var rightZone, out _))
+            {
+                return;
+            }
+
+            var leftContainer = leftZone.Q(ToolbarExtensionLeftContainerName);
+            var rightContainer = rightZone.Q(ToolbarExtensionRightContainerName);
 
             if (leftContainer != null && rightContainer != null)
             {
