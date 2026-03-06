@@ -56,15 +56,17 @@ namespace YujiAp.UnityToolbarExtension.Editor.Register
             _slider = new Slider(-1f, 1f);
             _slider.style.width = 70;
             _slider.style.height = 18;
+            _slider.style.marginTop = -2;
 
             var centerLine = new VisualElement();
             centerLine.style.position = Position.Absolute;
             centerLine.style.left = _slider.style.width.value.value / 2f + 3f;
             centerLine.style.top = 2;
-            centerLine.style.bottom = 0;
+            centerLine.style.height = 14;
             centerLine.style.width = 1;
             centerLine.style.backgroundColor = new Color(0.6f, 0.6f, 0.6f, 0.8f);
             centerLine.style.marginLeft = -0.5f;
+            centerLine.style.marginTop = -2;
 
             sliderContainer.Add(centerLine);
             sliderContainer.Add(_slider);

@@ -24,6 +24,8 @@ namespace YujiAp.UnityToolbarExtension.Editor.Register
             button.name = "PrefabHistoryButton";
             button.tooltip = "Open prefab from history";
             button.style.width = 40;
+            button.style.flexDirection = FlexDirection.Row;
+            button.style.alignItems = Align.Center;
 
             var image = new Image();
             image.image = EditorGUIUtility.IconContent("d_Prefab Icon").image;
@@ -31,6 +33,7 @@ namespace YujiAp.UnityToolbarExtension.Editor.Register
 
             var arrow = new VisualElement();
             arrow.AddToClassList("unity-icon-arrow");
+            arrow.style.flexShrink = 0;
             button.Add(arrow);
 
             return button;

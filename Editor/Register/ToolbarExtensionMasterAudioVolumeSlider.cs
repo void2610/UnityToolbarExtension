@@ -53,6 +53,7 @@ namespace YujiAp.UnityToolbarExtension.Editor.Register
             _slider = new Slider(0f, 1f);
             _slider.style.width = 70;
             _slider.style.height = 18;
+            _slider.style.marginTop = -2;
             sliderContainer.Add(_slider);
 
             _currentValueLabel = new Label(MasterAudioVolumeValueText);
