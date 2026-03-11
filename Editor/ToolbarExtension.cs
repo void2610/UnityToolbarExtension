@@ -27,6 +27,14 @@ namespace YujiAp.UnityToolbarExtension.Editor
         private const string ToolbarExtensionMiddleRightContainerName = "ToolbarExtensionMiddleRightContainer";
         private const string ToolbarExtensionLeftAlignName = "LeftAlign";
         private const string ToolbarExtensionRightAlignName = "RightAlign";
+        private static readonly List<Type> ToolbarElementTypes = new();
+        private static VisualElement _cachedToolbar;
+        private static VisualElement _cachedLeftRoot;
+        private static VisualElement _cachedRightRoot;
+        private static VisualElement _cachedCenterLeftRoot;
+        private static VisualElement _cachedCenterRightRoot;
+        private static bool _useCompactContainer;
+        private static bool _isDirty = true;
 
         static ToolbarExtension()
         {
@@ -35,6 +43,7 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 return;
             }
 
+            RefreshToolbarElementTypes();
             EditorApplication.update -= OnUpdate;
             EditorApplication.update += OnUpdate;
         }
@@ -49,29 +58,22 @@ namespace YujiAp.UnityToolbarExtension.Editor
 
             if (!TryGetToolbarZones(toolbar, out var toolbarZoneLeftAlign, out var toolbarZoneRightAlign, out var useCompactContainer))
             {
+                InvalidateContainerCache();
                 return;
             }
 
             // Retinaディスプレイから外部ディスプレイにウィンドウを移動した際などにリセットされてしまうため、
             // 描画済みかどうかを毎フレーム確認し、描画されていなかったら描画するようにしておく
+            var toolbarChanged = !ReferenceEquals(_cachedToolbar, toolbar) || _useCompactContainer != useCompactContainer;
+            if (toolbarChanged)
+            {
+                InvalidateContainerCache();
+                _cachedToolbar = toolbar;
+                _useCompactContainer = useCompactContainer;
+            }
+
             var leftContainer = toolbarZoneLeftAlign.Q(ToolbarExtensionLeftContainerName);
             var rightContainer = toolbarZoneRightAlign.Q(ToolbarExtensionRightContainerName);
-            if (leftContainer != null && rightContainer != null)
-            {
-                if (useCompactContainer)
-                {
-                    ApplyCompactLayout(leftContainer);
-                    ApplyCompactLayout(rightContainer);
-                    EnsureCompactOuterContainerOrder(toolbarZoneRightAlign, rightContainer, toolbarZoneRightAlign.childCount - 1);
-                    EnsureCompactCenterContainers(toolbar, out var centerLeftContainer, out var centerRightContainer);
-                    DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), centerLeftContainer,
-                        centerRightContainer, rightContainer.Q(ToolbarExtensionRightAlignName));
-                    return;
-                }
-
-                // 描画済みなので終了
-                return;
-            }
 
             if (leftContainer == null)
             {
@@ -93,18 +95,63 @@ namespace YujiAp.UnityToolbarExtension.Editor
                     ApplyCompactLayout(rightContainer);
                 }
                 toolbarZoneRightAlign.Insert(toolbarZoneRightAlign.childCount, rightContainer);
+                _isDirty = true;
             }
 
             if (useCompactContainer)
             {
+                ApplyCompactLayout(leftContainer);
+                ApplyCompactLayout(rightContainer);
+                EnsureCompactOuterContainerOrder(toolbarZoneRightAlign, rightContainer, toolbarZoneRightAlign.childCount - 1);
                 EnsureCompactCenterContainers(toolbar, out var centerLeftContainer, out var centerRightContainer);
-                DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), centerLeftContainer,
-                    centerRightContainer, rightContainer.Q(ToolbarExtensionRightAlignName));
+
+                var leftRoot = leftContainer.Q(ToolbarExtensionLeftAlignName);
+                var rightRoot = rightContainer.Q(ToolbarExtensionRightAlignName);
+                var rootsChanged = !ReferenceEquals(_cachedLeftRoot, leftRoot)
+                    || !ReferenceEquals(_cachedCenterLeftRoot, centerLeftContainer)
+                    || !ReferenceEquals(_cachedCenterRightRoot, centerRightContainer)
+                    || !ReferenceEquals(_cachedRightRoot, rightRoot);
+
+                if (rootsChanged)
+                {
+                    _cachedLeftRoot = leftRoot;
+                    _cachedCenterLeftRoot = centerLeftContainer;
+                    _cachedCenterRightRoot = centerRightContainer;
+                    _cachedRightRoot = rightRoot;
+                    _isDirty = true;
+                }
+
+                if (_isDirty)
+                {
+                    DrawElements(_cachedLeftRoot, _cachedCenterLeftRoot, _cachedCenterRightRoot, _cachedRightRoot);
+                    _isDirty = false;
+                }
                 return;
             }
 
-            DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), leftContainer.Q(ToolbarExtensionRightAlignName),
-                rightContainer.Q(ToolbarExtensionLeftAlignName), rightContainer.Q(ToolbarExtensionRightAlignName));
+            var leftSideLeftAlignRoot = leftContainer.Q(ToolbarExtensionLeftAlignName);
+            var leftSideRightAlignRoot = leftContainer.Q(ToolbarExtensionRightAlignName);
+            var rightSideLeftAlignRoot = rightContainer.Q(ToolbarExtensionLeftAlignName);
+            var rightSideRightAlignRoot = rightContainer.Q(ToolbarExtensionRightAlignName);
+            var normalRootsChanged = !ReferenceEquals(_cachedLeftRoot, leftSideLeftAlignRoot)
+                || !ReferenceEquals(_cachedCenterLeftRoot, leftSideRightAlignRoot)
+                || !ReferenceEquals(_cachedCenterRightRoot, rightSideLeftAlignRoot)
+                || !ReferenceEquals(_cachedRightRoot, rightSideRightAlignRoot);
+
+            if (normalRootsChanged)
+            {
+                _cachedLeftRoot = leftSideLeftAlignRoot;
+                _cachedCenterLeftRoot = leftSideRightAlignRoot;
+                _cachedCenterRightRoot = rightSideLeftAlignRoot;
+                _cachedRightRoot = rightSideRightAlignRoot;
+                _isDirty = true;
+            }
+
+            if (_isDirty)
+            {
+                DrawElements(_cachedLeftRoot, _cachedCenterLeftRoot, _cachedCenterRightRoot, _cachedRightRoot);
+                _isDirty = false;
+            }
         }
 
         private static VisualElement GetToolbar()
@@ -243,14 +290,11 @@ namespace YujiAp.UnityToolbarExtension.Editor
             centerLeftContainer = middleZone.Q(ToolbarExtensionMiddleLeftContainerName) ?? CreateCompactCenterContainer(ToolbarExtensionMiddleLeftContainerName);
             centerRightContainer = middleZone.Q(ToolbarExtensionMiddleRightContainerName) ?? CreateCompactCenterContainer(ToolbarExtensionMiddleRightContainerName);
 
-            centerLeftContainer.RemoveFromHierarchy();
-            centerRightContainer.RemoveFromHierarchy();
-
             var playModeIndex = middleZone.IndexOf(playModeOverlay);
-            middleZone.Insert(Mathf.Clamp(playModeIndex, 0, middleZone.childCount), centerLeftContainer);
+            EnsureContainerOrder(middleZone, centerLeftContainer, Mathf.Clamp(playModeIndex, 0, middleZone.childCount));
 
             playModeIndex = middleZone.IndexOf(playModeOverlay);
-            middleZone.Insert(Mathf.Clamp(playModeIndex + 1, 0, middleZone.childCount), centerRightContainer);
+            EnsureContainerOrder(middleZone, centerRightContainer, Mathf.Clamp(playModeIndex + 1, 0, middleZone.childCount));
         }
 
         private static VisualElement CreateCompactCenterContainer(string name)
@@ -269,24 +313,47 @@ namespace YujiAp.UnityToolbarExtension.Editor
 
         private static void EnsureCompactOuterContainerOrder(VisualElement parent, VisualElement container, int targetIndex)
         {
+            EnsureContainerOrder(parent, container, targetIndex);
+        }
+
+        private static void EnsureContainerOrder(VisualElement parent, VisualElement container, int targetIndex)
+        {
             if (parent == null || container == null)
             {
                 return;
             }
 
             var currentIndex = parent.IndexOf(container);
-            if (currentIndex == targetIndex || currentIndex < 0)
+            if (currentIndex == targetIndex)
             {
                 return;
             }
 
+            var clampedTargetIndex = Mathf.Clamp(targetIndex, 0, parent.childCount);
+            if (currentIndex < 0)
+            {
+                parent.Insert(clampedTargetIndex, container);
+                return;
+            }
+
+            if (currentIndex < clampedTargetIndex)
+            {
+                clampedTargetIndex--;
+            }
+
             container.RemoveFromHierarchy();
-            parent.Insert(Mathf.Clamp(targetIndex, 0, parent.childCount), container);
+            parent.Insert(Mathf.Clamp(clampedTargetIndex, 0, parent.childCount), container);
         }
 
         private static void DrawElements(VisualElement leftSideLeftAlignRoot, VisualElement leftSideRightAlignRoot,
             VisualElement rightSideLeftAlignRoot, VisualElement rightSideRightAlignRoot)
         {
+            if (leftSideLeftAlignRoot == null || leftSideRightAlignRoot == null ||
+                rightSideLeftAlignRoot == null || rightSideRightAlignRoot == null)
+            {
+                return;
+            }
+
             // 既存の要素をクリア
             leftSideLeftAlignRoot.Clear();
             leftSideRightAlignRoot.Clear();
@@ -294,7 +361,7 @@ namespace YujiAp.UnityToolbarExtension.Editor
             rightSideRightAlignRoot.Clear();
 
             var settings = GetSettings();
-            var toolbarElements = GetTypesImplementingInterface<IToolbarElement>();
+            var toolbarElements = ToolbarElementTypes;
 
             // 設定がある場合は設定に従って利用可能な型を更新
             settings?.UpdateElementSettings(toolbarElements.ToList());
@@ -345,26 +412,11 @@ namespace YujiAp.UnityToolbarExtension.Editor
         /// <summary>
         /// 特定のインターフェースを実装したすべての型を取得
         /// </summary>
-        private static List<Type> GetTypesImplementingInterface<TInterface>()
+        private static void RefreshToolbarElementTypes()
         {
-            var interfaceType = typeof(TInterface);
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => !a.IsDynamic)
-                .SelectMany(GetAssemblyTypes)
-                .Where(t => t != null && interfaceType.IsAssignableFrom(t) && t.IsClass && !t.IsAbstract)
-                .ToList();
-        }
-
-        private static IEnumerable<Type> GetAssemblyTypes(Assembly assembly)
-        {
-            try
-            {
-                return assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException e)
-            {
-                return e.Types.Where(t => t != null);
-            }
+            ToolbarElementTypes.Clear();
+            ToolbarElementTypes.AddRange(TypeCache.GetTypesDerivedFrom<IToolbarElement>()
+                .Where(t => t != null && t.IsClass && !t.IsAbstract));
         }
 
         /// <summary>
@@ -380,14 +432,19 @@ namespace YujiAp.UnityToolbarExtension.Editor
         /// </summary>
         public static void ForceRefresh()
         {
+            _isDirty = true;
+            RefreshToolbarElementTypes();
+
             var toolbar = GetToolbar();
             if (toolbar == null)
             {
+                InvalidateContainerCache();
                 return;
             }
 
-            if (!TryGetToolbarZones(toolbar, out var leftZone, out var rightZone, out _))
+            if (!TryGetToolbarZones(toolbar, out var leftZone, out var rightZone, out var useCompactContainer))
             {
+                InvalidateContainerCache();
                 return;
             }
 
@@ -396,9 +453,38 @@ namespace YujiAp.UnityToolbarExtension.Editor
 
             if (leftContainer != null && rightContainer != null)
             {
-                DrawElements(leftContainer.Q(ToolbarExtensionLeftAlignName), leftContainer.Q(ToolbarExtensionRightAlignName),
-                    rightContainer.Q(ToolbarExtensionLeftAlignName), rightContainer.Q(ToolbarExtensionRightAlignName));
+                _cachedToolbar = toolbar;
+                _useCompactContainer = useCompactContainer;
+
+                if (useCompactContainer)
+                {
+                    EnsureCompactCenterContainers(toolbar, out var centerLeftContainer, out var centerRightContainer);
+                    _cachedLeftRoot = leftContainer.Q(ToolbarExtensionLeftAlignName);
+                    _cachedCenterLeftRoot = centerLeftContainer;
+                    _cachedCenterRightRoot = centerRightContainer;
+                    _cachedRightRoot = rightContainer.Q(ToolbarExtensionRightAlignName);
+                }
+                else
+                {
+                    _cachedLeftRoot = leftContainer.Q(ToolbarExtensionLeftAlignName);
+                    _cachedCenterLeftRoot = leftContainer.Q(ToolbarExtensionRightAlignName);
+                    _cachedCenterRightRoot = rightContainer.Q(ToolbarExtensionLeftAlignName);
+                    _cachedRightRoot = rightContainer.Q(ToolbarExtensionRightAlignName);
+                }
+
+                DrawElements(_cachedLeftRoot, _cachedCenterLeftRoot, _cachedCenterRightRoot, _cachedRightRoot);
+                _isDirty = false;
             }
+        }
+
+        private static void InvalidateContainerCache()
+        {
+            _cachedToolbar = null;
+            _cachedLeftRoot = null;
+            _cachedRightRoot = null;
+            _cachedCenterLeftRoot = null;
+            _cachedCenterRightRoot = null;
+            _isDirty = true;
         }
     }
 }
