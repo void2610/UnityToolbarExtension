@@ -200,7 +200,7 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 InstanceProperty = toolbarType.GetProperty("instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 WindowBackendProperty = toolbarType.GetProperty("windowBackend", BindingFlags.Instance | BindingFlags.NonPublic);
                 VisualTreeProperty = iWindowBackendType.GetProperty("visualTree", BindingFlags.Instance | BindingFlags.Public);
-                IsAvailable = true;
+                IsAvailable = (GetField != null || InstanceProperty != null) && WindowBackendProperty != null && VisualTreeProperty != null;
             }
         }
 
