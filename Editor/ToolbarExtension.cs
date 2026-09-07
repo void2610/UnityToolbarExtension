@@ -324,11 +324,6 @@ namespace YujiAp.UnityToolbarExtension.Editor
             }
 
             var currentIndex = parent.IndexOf(container);
-            if (currentIndex == targetIndex)
-            {
-                return;
-            }
-
             var clampedTargetIndex = Mathf.Clamp(targetIndex, 0, parent.childCount);
             if (currentIndex < 0)
             {
@@ -336,13 +331,15 @@ namespace YujiAp.UnityToolbarExtension.Editor
                 return;
             }
 
-            if (currentIndex < clampedTargetIndex)
+            // 取り外すと後続要素が 1 つ前へ詰まるため、現在位置より後ろを狙う場合は最終位置が 1 つ手前になる
+            var finalIndex = currentIndex < clampedTargetIndex ? clampedTargetIndex - 1 : clampedTargetIndex;
+            if (currentIndex == finalIndex)
             {
-                clampedTargetIndex--;
+                return;
             }
 
             container.RemoveFromHierarchy();
-            parent.Insert(Mathf.Clamp(clampedTargetIndex, 0, parent.childCount), container);
+            parent.Insert(Mathf.Clamp(finalIndex, 0, parent.childCount), container);
         }
 
         private static void DrawElements(VisualElement leftSideLeftAlignRoot, VisualElement leftSideRightAlignRoot,
