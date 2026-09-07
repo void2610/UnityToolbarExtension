@@ -156,41 +156,52 @@ namespace YujiAp.UnityToolbarExtension.Editor
 
         private static VisualElement GetToolbar()
         {
-            var toolbarType = Type.GetType("UnityEditor.Toolbar,UnityEditor");
-            if (toolbarType == null)
+            if (!ToolbarReflection.IsAvailable)
             {
                 return null;
             }
 
-            var getField = toolbarType.GetField("get", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            var getValue = getField?.GetValue(null);
-            if (getValue == null)
-            {
-                var instanceProperty = toolbarType.GetProperty("instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                getValue = instanceProperty?.GetValue(null);
-            }
+            var getValue = ToolbarReflection.GetField?.GetValue(null) ?? ToolbarReflection.InstanceProperty?.GetValue(null);
             if (getValue == null)
             {
                 return null;
             }
 
-            var windowBackendProperty = toolbarType.GetProperty("windowBackend", BindingFlags.Instance | BindingFlags.NonPublic);
-            var windowBackendValue = windowBackendProperty?.GetValue(getValue);
+            var windowBackendValue = ToolbarReflection.WindowBackendProperty?.GetValue(getValue);
             if (windowBackendValue == null)
             {
                 return null;
             }
 
-            var iWindowBackendType = Type.GetType("UnityEditor.IWindowBackend,UnityEditor");
-            if (iWindowBackendType == null)
+            return ToolbarReflection.VisualTreeProperty?.GetValue(windowBackendValue) as VisualElement;
+        }
+
+        /// <summary>
+        /// UnityEditor.Toolbar の内部メンバー。EditorApplication.update 毎の探索コストを避けるため静的に解決しておく
+        /// </summary>
+        private static class ToolbarReflection
+        {
+            public static readonly FieldInfo GetField;
+            public static readonly PropertyInfo InstanceProperty;
+            public static readonly PropertyInfo WindowBackendProperty;
+            public static readonly PropertyInfo VisualTreeProperty;
+            public static readonly bool IsAvailable;
+
+            static ToolbarReflection()
             {
-                return null;
+                var toolbarType = Type.GetType("UnityEditor.Toolbar,UnityEditor");
+                var iWindowBackendType = Type.GetType("UnityEditor.IWindowBackend,UnityEditor");
+                if (toolbarType == null || iWindowBackendType == null)
+                {
+                    return;
+                }
+
+                GetField = toolbarType.GetField("get", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                InstanceProperty = toolbarType.GetProperty("instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                WindowBackendProperty = toolbarType.GetProperty("windowBackend", BindingFlags.Instance | BindingFlags.NonPublic);
+                VisualTreeProperty = iWindowBackendType.GetProperty("visualTree", BindingFlags.Instance | BindingFlags.Public);
+                IsAvailable = true;
             }
-
-            var visualTreeProperty = iWindowBackendType.GetProperty("visualTree", BindingFlags.Instance | BindingFlags.Public);
-            var visualTreeValue = visualTreeProperty?.GetValue(windowBackendValue);
-
-            return visualTreeValue as VisualElement;
         }
 
         private static bool TryGetToolbarZones(VisualElement toolbar, out VisualElement leftZone, out VisualElement rightZone, out bool useCompactContainer)
